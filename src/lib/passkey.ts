@@ -56,6 +56,7 @@ export async function registerPasskey(email: string): Promise<WalletAccount> {
     rpId,
     label: normalized,
     email: normalized,
+    source: 'created',
     createdAt: Date.now(),
   })
 
@@ -156,6 +157,7 @@ export async function loginWithDiscoverablePasskey(): Promise<WalletAccount> {
     rpId,
     label,
     email: first.userHandle ?? '',
+    source: 'recovered',
     createdAt: Date.now(),
   })
 

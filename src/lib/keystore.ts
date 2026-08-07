@@ -14,6 +14,8 @@ export type StoredCredential = {
   label: string
   email: string
   createdAt: number
+  /** Where this entry came from — helps explain cross-device behavior. */
+  source?: 'created' | 'recovered'
 }
 
 const KEY = 'nvnmchain:credentials:v1'

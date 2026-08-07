@@ -12,6 +12,7 @@ export function ConnectScreen({
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [email, setEmail] = useState('')
+  const [, setRefreshKey] = useState(0)
   const existing = keystore.listCredentials()
 
   async function handleCreate() {
@@ -65,6 +66,21 @@ export function ConnectScreen({
     } finally {
       setBusy(null)
     }
+  }
+
+  function handleRemove(c: keystore.StoredCredential) {
+    if (
+      !window.confirm(
+        `Remove ${c.email ?? c.label} (${shortAddress(
+          deriveAddress(c.publicKey),
+        )}) from this browser's list? The passkey itself is untouched — you can sign back in anytime with "Sign in with a passkey on this device".`,
+      )
+    )
+      return
+    keystore.removeCredential(c.id)
+    setError(null)
+    // force re-render to refresh the list
+    setRefreshKey((k) => k + 1)
   }
 
   return (
@@ -124,17 +140,31 @@ export function ConnectScreen({
             <div className="existing">
               <h3>Sign back in</h3>
               {existing.map((c) => (
-                <button
-                  key={c.id}
-                  className="btn ghost existing-row"
-                  onClick={() => handleLogin(c.id)}
-                  disabled={!!busy}
-                >
-                  <span className="existing-label">{c.email ?? c.label}</span>
-                  <span className="existing-meta">
-                    {shortAddress(deriveAddress(c.publicKey))} · {fmtDate(c.createdAt)}
-                  </span>
-                </button>
+                <div key={c.id} className="existing-row-wrap">
+                  <button
+                    className="btn ghost existing-row"
+                    onClick={() => handleLogin(c.id)}
+                    disabled={!!busy}
+                  >
+                    <span className="existing-label">
+                      {c.email ?? c.label}
+                      {c.source === 'recovered' && (
+                        <span className="badge">synced</span>
+                      )}
+                    </span>
+                    <span className="existing-meta">
+                      {shortAddress(deriveAddress(c.publicKey))} · {fmtDate(c.createdAt)}
+                    </span>
+                  </button>
+                  <button
+                    className="btn ghost tiny remove-btn"
+                    title="Remove this entry from this browser (does not delete the passkey)"
+                    onClick={() => handleRemove(c)}
+                    disabled={!!busy}
+                  >
+                    ✕
+                  </button>
+                </div>
               ))}
             </div>
           )}
