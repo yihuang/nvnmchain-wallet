@@ -186,7 +186,7 @@ export async function getHistory(
   address: string,
   limit = 20,
 ): Promise<HistoryItem[]> {
-  const url = `${nvnmchain.blockExplorers!.default.url}/api/v2/addresses/${address}/transactions?filter=to%20%7C%20from`
+  const url = `${nvnmchain.blockExplorers!.default.url}/api/v2/addresses/${address}/transactions`
   const res = await fetch(url)
   if (!res.ok) return []
   const data = await res.json()
