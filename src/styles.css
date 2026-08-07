@@ -441,6 +441,45 @@ code,
 
 /* ---- Activity ---- */
 
+.activity-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.activity-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px dashed var(--card-border);
+  border-radius: 12px;
+  background: var(--bg-soft);
+}
+
+.activity-empty p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.receive-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.receive-address {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--accent-2);
+  overflow-wrap: anywhere;
+}
+
 .activity {
   list-style: none;
   margin: 14px 0 0;

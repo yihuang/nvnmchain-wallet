@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { StoredCredential } from '../lib/keystore'
 import type { WalletAccount } from '../lib/passkey'
 import { deriveAddress } from '../lib/passkey'
-import { getPathUsdBalance, getHistory, tryFaucet, type HistoryItem } from '../lib/client'
+import { getPathUsdBalance, getHistory, tryFaucet, type HistoryResult } from '../lib/client'
 import { formatUnits, shortAddress, explorerAddressUrl, explorerTxUrl, PATHUSD } from '../chain'
 import { SendPanel } from './SendPanel'
 import { ActivityList } from './ActivityList'
@@ -18,7 +18,7 @@ export function Dashboard({
 }) {
   const [address] = useState(() => deriveAddress(credential.publicKey))
   const [balance, setBalance] = useState<bigint | null>(null)
-  const [history, setHistory] = useState<HistoryItem[]>([])
+  const [history, setHistory] = useState<HistoryResult>({ items: [], ok: false })
   const [faucetMsg, setFaucetMsg] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -129,7 +129,7 @@ export function Dashboard({
           }}
         />
 
-        <ActivityList items={history} address={address} />
+        <ActivityList result={history} address={address} onRefresh={refresh} />
       </main>
     </div>
   )

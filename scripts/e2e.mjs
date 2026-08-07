@@ -96,6 +96,63 @@ async function main() {
     process.exit(1)
   }
 
+  // 4. Activity: empty state should guide the user, and items must render
+  console.log('→ checking activity…')
+  await page.waitForSelector('.activity-card', { timeout: 10_000 })
+  await page.waitForTimeout(2500) // let the initial refresh settle
+  const emptyText = (await page.textContent('.activity-card'))?.replace(/\s+/g, ' ')
+  if (!/No activity yet/.test(emptyText ?? '')) {
+    console.log('✘ expected guided empty state, got:', emptyText?.slice(0, 80))
+    await browser.close()
+    process.exit(1)
+  }
+  console.log('✔ empty state shows receive guidance')
+
+  // Intercept the explorer API → feed fake transactions for this address
+  await page.route('**/api/v2/addresses/*/transactions', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [
+          {
+            hash: '0x' + 'a1'.repeat(32),
+            status: 'ok',
+            timestamp: '2026-08-07T12:00:00.000000Z',
+            from: { hash: '0x' + '11'.repeat(20) },
+            to: { hash: address },
+            fee: { value: '168274800000000' },
+          },
+          {
+            hash: '0x' + 'b2'.repeat(32),
+            status: 'ok',
+            timestamp: '2026-08-07T13:00:00.000000Z',
+            from: { hash: address },
+            to: { hash: '0x' + '22'.repeat(20) },
+            fee: { value: '168274800000000' },
+          },
+        ],
+        next_page_params: null,
+      }),
+    })
+  })
+  await page.click('button:has-text("Refresh")')
+  await page.waitForSelector('.activity li', { timeout: 10_000 })
+  const rows = await page.locator('.activity li').count()
+  if (rows !== 2) {
+    console.log('✘ expected 2 activity rows, got', rows)
+    await browser.close()
+    process.exit(1)
+  }
+  const firstDir = await page.locator('.activity li .dir').first().getAttribute('class')
+  if (!firstDir?.includes('in')) {
+    console.log('✘ expected incoming indicator on the first row')
+    await browser.close()
+    process.exit(1)
+  }
+  console.log('✔ activity renders incoming/outgoing rows')
+  await page.unroute('**/api/v2/addresses/*/transactions')
+
   // 5. Sign back in — email should be listed & restored
   console.log('→ signing back in…')
   await page.click('button:has-text("Disconnect")')

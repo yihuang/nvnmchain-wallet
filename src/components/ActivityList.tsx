@@ -1,20 +1,71 @@
-import { shortAddress, explorerTxUrl } from '../chain'
-import type { HistoryItem } from '../lib/client'
+import { useState } from 'react'
+import { shortAddress, explorerTxUrl, explorerAddressUrl } from '../chain'
+import type { HistoryResult } from '../lib/client'
 
 export function ActivityList({
-  items,
+  result,
   address,
+  onRefresh,
 }: {
-  items: HistoryItem[]
+  result: HistoryResult
   address: string
+  onRefresh: () => void
 }) {
+  const [copied, setCopied] = useState(false)
+  const items = result.items
+
+  async function copyAddress() {
+    try {
+      await navigator.clipboard.writeText(address)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
+
   return (
     <section className="card activity-card">
-      <h2>Activity</h2>
-      {items.length === 0 ? (
-        <p className="muted">
-          No transactions yet. Once you receive pathUSD they'll appear here.
-        </p>
+      <div className="activity-head">
+        <h2>Activity</h2>
+        <button className="btn ghost tiny" onClick={onRefresh} title="Refresh">
+          ↻ Refresh
+        </button>
+      </div>
+
+      {!result.ok ? (
+        <div className="activity-empty">
+          <p className="muted">
+            Couldn't load activity from the explorer right now.
+          </p>
+          <button className="btn ghost small" onClick={onRefresh}>
+            Try again
+          </button>
+        </div>
+      ) : items.length === 0 ? (
+        <div className="activity-empty">
+          <p className="muted">
+            <strong>No activity yet</strong> — this is a brand-new address.
+          </p>
+          <p className="muted small">
+            Send pathUSD to this address to receive funds, then transfers and
+            payments will show up here automatically:
+          </p>
+          <div className="receive-row">
+            <code className="receive-address">{address}</code>
+            <button className="btn ghost small" onClick={copyAddress}>
+              {copied ? 'Copied ✓' : 'Copy address'}
+            </button>
+          </div>
+          <a
+            className="btn ghost small"
+            href={explorerAddressUrl(address)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            View on explorer ↗
+          </a>
+        </div>
       ) : (
         <ul className="activity">
           {items.map((t) => {
@@ -36,7 +87,11 @@ export function ActivityList({
                   </a>
                   <span className="muted small">
                     {incoming ? 'from' : 'to'}{' '}
-                    <span className="mono">{shortAddress(t.from === address ? t.to : t.from)}</span>
+                    <span className="mono">
+                      {shortAddress(
+                        t.from === address ? t.to : t.from,
+                      )}
+                    </span>
                   </span>
                 </div>
                 <div className="row-side">

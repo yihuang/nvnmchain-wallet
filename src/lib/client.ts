@@ -182,23 +182,40 @@ export type HistoryItem = {
   fee?: string
 }
 
+export type HistoryResult = {
+  items: HistoryItem[]
+  ok: boolean
+}
+
 export async function getHistory(
   address: string,
   limit = 20,
-): Promise<HistoryItem[]> {
-  const url = `${nvnmchain.blockExplorers!.default.url}/api/v2/addresses/${address}/transactions`
-  const res = await fetch(url)
-  if (!res.ok) return []
-  const data = await res.json()
-  const items: any[] = data?.items ?? []
-  return items.slice(0, limit).map((t) => ({
-    hash: t.hash,
-    from: t.from?.hash ?? '',
-    to: t.to?.hash ?? '',
-    status: t.status === 'ok' ? 'ok' : t.status === 'error' ? 'error' : 'pending',
-    timestamp: t.timestamp,
-    fee: t.fee?.value,
-  }))
+): Promise<HistoryResult> {
+  try {
+    const url = `${nvnmchain.blockExplorers!.default.url}/api/v2/addresses/${address}/transactions`
+    const res = await fetch(url)
+    if (!res.ok) return { items: [], ok: false }
+    const data = await res.json()
+    const items: any[] = data?.items ?? []
+    return {
+      items: items.slice(0, limit).map((t) => ({
+        hash: t.hash,
+        from: t.from?.hash ?? '',
+        to: t.to?.hash ?? '',
+        status:
+          t.status === 'ok'
+            ? 'ok'
+            : t.status === 'error'
+              ? 'error'
+              : 'pending',
+        timestamp: t.timestamp,
+        fee: t.fee?.value,
+      })),
+      ok: true,
+    }
+  } catch {
+    return { items: [], ok: false }
+  }
 }
 
 /** Attempts the Tempo faucet RPC (not enabled on this canary). */
