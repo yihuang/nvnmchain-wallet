@@ -82,7 +82,7 @@ export function Dashboard({
           <div className="account-head">
             <div>
               <span className="eyebrow">Passkey account</span>
-              <h2>{credential.label}</h2>
+              <h2>{credential.email ?? credential.label}</h2>
             </div>
             <div className="acct-actions">
               <button className="btn ghost small" onClick={copyAddress}>

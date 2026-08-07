@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { registerPasskey, loginPasskey } from '../lib/passkey'
+import { registerPasskey, loginPasskey, normalizeEmail, isValidEmail } from '../lib/passkey'
 import type { WalletAccount } from '../lib/passkey'
 import * as keystore from '../lib/keystore'
 import { CHAIN_ID } from '../chain'
@@ -11,14 +11,19 @@ export function ConnectScreen({
 }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [label, setLabel] = useState('My Passkey')
+  const [email, setEmail] = useState('')
   const existing = keystore.listCredentials()
 
   async function handleCreate() {
-    setBusy('Creating passkey…')
     setError(null)
+    if (!isValidEmail(email)) {
+      setError('Enter a valid email address — it will be your account name.')
+      return
+    }
+    const normalized = normalizeEmail(email)
+    setBusy(`Creating passkey for ${normalized}…`)
     try {
-      const account = await registerPasskey(label.trim() || 'My Passkey')
+      const account = await registerPasskey(normalized)
       onCreated(account)
     } catch (e: any) {
       setError(prettyError(e))
@@ -66,16 +71,29 @@ export function ConnectScreen({
           <h2>Create a wallet</h2>
           <p className="muted">
             Your passkey lives on this device only. Your address is derived
-            from its P-256 public key, on-chain — nothing is uploaded.
+            from its P-256 public key, on-chain — nothing is uploaded. Your
+            email is used as the account name and stored locally.
           </p>
+          <label className="lbl" htmlFor="email">
+            Email
+          </label>
           <input
+            id="email"
             className="field"
-            value={label}
-            maxLength={32}
-            onChange={(e) => setLabel(e.target.value)}
-            placeholder="Passkey name (e.g. iPhone 15)"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+            placeholder="you@example.com"
             disabled={!!busy}
           />
+          {isValidEmail(email) && (
+            <div className="normalized-hint">
+              Account name:{' '}
+              <code>{normalizeEmail(email)}</code>
+            </div>
+          )}
           <button className="btn primary" onClick={handleCreate} disabled={!!busy}>
             {busy ?? 'Create new passkey wallet'}
           </button>
@@ -90,7 +108,7 @@ export function ConnectScreen({
                   onClick={() => handleLogin(c.id)}
                   disabled={!!busy}
                 >
-                  <span className="existing-label">{c.label}</span>
+                  <span className="existing-label">{c.email ?? c.label}</span>
                   <span className="existing-meta">{c.id.slice(0, 12)}…</span>
                 </button>
               ))}
@@ -114,6 +132,6 @@ function prettyError(e: any): string {
   if (/NotAllowedError|not allowed/i.test(msg))
     return 'Passkey prompt was cancelled or blocked. Try again.'
   if (/InvalidStateError|already exists/i.test(msg))
-    return 'A passkey with this name already exists — pick another name or use "Sign back in".'
+    return 'A passkey for this email already exists on this device — use "Sign back in".'
   return msg
 }

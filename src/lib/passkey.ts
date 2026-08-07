@@ -14,18 +14,35 @@ export type WalletAccount = {
   credential: P256Credential
   rpId: string
   label: string
+  email: string
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+/**
+ * Normalizes an email address for use as the account name:
+ * trims surrounding whitespace and lowercases the whole address
+ * (the standard, practical normalization for email identity).
+ */
+export function normalizeEmail(input: string): string {
+  return input.trim().toLowerCase()
+}
+
+export function isValidEmail(input: string): boolean {
+  return EMAIL_RE.test(normalizeEmail(input))
 }
 
 /**
  * Creates a brand-new passkey on the device ("Register").
  * The derived EVM address is keccak256(publicKeyX || publicKeyY) truncated
  * to the last 20 bytes — the same derivation the chain uses for P-256 and
- * WebAuthn accounts.
+ * WebAuthn accounts. The normalized email becomes the account name.
  */
-export async function registerPasskey(label: string): Promise<WalletAccount> {
+export async function registerPasskey(email: string): Promise<WalletAccount> {
+  const normalized = normalizeEmail(email)
   const rpId = window.location.hostname
   const credential = await WebAuthnP256.createCredential({
-    label,
+    label: normalized,
     rpId,
     // requireResidentKey + userVerification are set by the SDK already;
     // keep the default authenticator selection (platform authenticator).
@@ -35,11 +52,18 @@ export async function registerPasskey(label: string): Promise<WalletAccount> {
     id: credential.id,
     publicKey: credential.publicKey,
     rpId,
-    label,
+    label: normalized,
+    email: normalized,
     createdAt: Date.now(),
   })
 
-  return { address: deriveAddress(credential.publicKey), credential, rpId, label }
+  return {
+    address: deriveAddress(credential.publicKey),
+    credential,
+    rpId,
+    label: normalized,
+    email: normalized,
+  }
 }
 
 /**
@@ -71,6 +95,7 @@ export async function loginPasskey(
     },
     rpId: stored.rpId,
     label: stored.label,
+    email: stored.email ?? stored.label,
   }
 }
 

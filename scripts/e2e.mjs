@@ -30,12 +30,32 @@ async function main() {
   console.log('→ visiting', BASE)
   await page.goto(BASE, { waitUntil: 'networkidle' })
 
-  // 1. Register a passkey
+  // 1. Register a passkey with an email (mixed case + padding → normalized)
   console.log('→ registering passkey…')
-  await page.fill('input[placeholder*="Passkey name"]', 'E2E Test Passkey')
+  // invalid email first → should be rejected
+  await page.fill('#email', 'not-an-email')
+  await page.click('button:has-text("Create new passkey wallet")')
+  await page.waitForSelector('.error', { timeout: 10_000 })
+  const invalidErr = (await page.textContent('.error'))?.trim()
+  console.log('→ invalid email rejected:', invalidErr?.slice(0, 60))
+  if (!/valid email/i.test(invalidErr ?? '')) {
+    console.log('✘ expected email validation error')
+    await browser.close()
+    process.exit(1)
+  }
+
+  // valid email with padding + uppercase → normalized to lowercase/trimmed
+  await page.fill('#email', '  Test.User@Example.COM  ')
   await page.click('button:has-text("Create new passkey wallet")')
   await page.waitForSelector('text=Balance', { timeout: 20_000 })
-  console.log('✔ registered & dashboard loaded')
+  const accountName = (await page.textContent('.account-head h2'))?.trim()
+  console.log('→ account name:', accountName)
+  if (accountName !== 'test.user@example.com') {
+    console.log('✘ expected normalized email test.user@example.com, got:', accountName)
+    await browser.close()
+    process.exit(1)
+  }
+  console.log('✔ registered & email normalized')
 
   const address = (await page.textContent('code.address'))?.trim()
   console.log('→ address:', address)
@@ -76,19 +96,31 @@ async function main() {
     process.exit(1)
   }
 
-  // 5. Sign back in
+  // 5. Sign back in — email should be listed & restored
   console.log('→ signing back in…')
   await page.click('button:has-text("Disconnect")')
   await page.waitForSelector('.existing', { timeout: 10_000 })
+  const listedEmail = (await page.textContent('.existing-label'))?.trim()
+  if (listedEmail !== 'test.user@example.com') {
+    console.log('✘ expected normalized email in sign-in list, got:', listedEmail)
+    await browser.close()
+    process.exit(1)
+  }
   await page.click('.existing-row')
   await page.waitForSelector('.balance-amount', { timeout: 20_000 })
   const addr2 = (await page.textContent('code.address'))?.trim()
+  const name2 = (await page.textContent('.account-head h2'))?.trim()
   if (addr2 !== address) {
     console.log('✘ address mismatch after re-login:', addr2, 'vs', address)
     await browser.close()
     process.exit(1)
   }
-  console.log('✔ re-login restored the same address')
+  if (name2 !== 'test.user@example.com') {
+    console.log('✘ account name not restored:', name2)
+    await browser.close()
+    process.exit(1)
+  }
+  console.log('✔ re-login restored the same address + email')
 
   console.log('\n✔ E2E PASS — registration, derivation, fee estimate, Max,')
   console.log('  send feedback and re-login all work in the browser.')

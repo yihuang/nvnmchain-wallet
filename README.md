@@ -27,14 +27,20 @@ fees in `pathUSD` via the Fee Manager.
 
 ## Features
 
-- **Create wallet** — register a passkey (resident key, user-verifying),
-  address is derived on-chain-style as `keccak256(pubKeyX ‖ pubKeyY)[12:]`.
-- **Sign back in** — authenticates with the existing passkey; the public
-  key is restored from the local keystore (it isn't extractable from the
-  authenticator).
-- **Balance** — live `pathUSD` balance via the TIP-20 precompile.
+- **Create wallet** — enter an email (it becomes your account name, stored
+  locally; normalized to lowercase + trimmed) and register a passkey
+  (resident key, user-verifying). Address is derived on-chain-style as
+  `keccak256(pubKeyX ‖ pubKeyY)[12:]`.
+- **Sign back in** — pick your email from the list and authenticate with the
+  existing passkey; the public key is restored from the local keystore (it
+  isn't extractable from the authenticator).
+- **Fee-aware Max** — gas is measured via `tempo_simulateV1` (works before
+  the account is funded), the pathUSD fee reserve is computed deterministically
+  (`gasLimit × maxFeePerGas / 1e12`), and Max leaves room for the fee.
 - **Send pathUSD** — one passkey prompt per transaction; fees are paid in
-  `pathUSD`; broadcasts a type-`0x76` Tempo Transaction.
+  `pathUSD`; broadcasts a type-`0x76` Tempo Transaction and reports the final
+  on-chain status (confirmed / reverted / pending) instead of failing silently.
+- **Balance** — live `pathUSD` balance via the TIP-20 precompile.
 - **Activity** — recent transactions from Blockscout.
 - **Request funds** — attempts the Tempo faucet RPC (`tempo_fundAddress`);
   currently not enabled on the canary, so it explains how to fund.

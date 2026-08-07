@@ -12,6 +12,7 @@ export type StoredCredential = {
   publicKey: string // 0x-prefixed hex, 64-byte uncompressed (x||y)
   rpId: string
   label: string
+  email: string
   createdAt: number
 }
 
