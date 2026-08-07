@@ -57,6 +57,33 @@ async function main() {
   }
   console.log('✔ registered & email normalized')
 
+  // Creating a second account with the SAME email must be blocked
+  console.log('→ same-email second account must be blocked…')
+  await page.click('button:has-text("Disconnect")')
+  await page.waitForSelector('.existing', { timeout: 10_000 })
+  await page.fill('#email', 'test.user@example.com')
+  await page.click('button:has-text("Create new passkey wallet")')
+  await page.waitForSelector('.error', { timeout: 10_000 })
+  const dupErr = (await page.textContent('.error'))?.trim()
+  if (!/already have a passkey/i.test(dupErr ?? '')) {
+    console.log('✘ expected same-email warning, got:', dupErr?.slice(0, 80))
+    await browser.close()
+    process.exit(1)
+  }
+  console.log('✔ same-email duplicate blocked with a clear warning')
+  // the sign-in list should show the address + created date
+  const listLabel = (await page.textContent('.existing-label'))?.trim()
+  const listMeta = (await page.textContent('.existing-meta'))?.trim()
+  console.log('→ sign-in list shows:', listLabel, '·', listMeta)
+  if (!/0x/.test(listMeta ?? '')) {
+    console.log('✘ expected an address preview in the sign-in list')
+    await browser.close()
+    process.exit(1)
+  }
+  // sign back in with the existing passkey
+  await page.click('.existing-row')
+  await page.waitForSelector('.balance-amount', { timeout: 20_000 })
+
   const address = (await page.textContent('code.address'))?.trim()
   console.log('→ address:', address)
 

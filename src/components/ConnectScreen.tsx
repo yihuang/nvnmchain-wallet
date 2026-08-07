@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { registerPasskey, loginPasskey, loginWithDiscoverablePasskey, normalizeEmail, isValidEmail } from '../lib/passkey'
+import { registerPasskey, loginPasskey, loginWithDiscoverablePasskey, deriveAddress, normalizeEmail, isValidEmail } from '../lib/passkey'
 import type { WalletAccount } from '../lib/passkey'
 import * as keystore from '../lib/keystore'
-import { CHAIN_ID } from '../chain'
+import { CHAIN_ID, shortAddress } from '../chain'
 
 export function ConnectScreen({
   onCreated,
@@ -21,6 +21,15 @@ export function ConnectScreen({
       return
     }
     const normalized = normalizeEmail(email)
+    const sameEmail = existing.find((c) => c.email === normalized)
+    if (sameEmail) {
+      setError(
+        `You already have a passkey for ${normalized} in this browser — it's a different account (${shortAddress(
+          deriveAddress(sameEmail.publicKey),
+        )}). Creating a new passkey with the same email makes ANOTHER separate account. Sign in with the existing one instead, or use a different email.`,
+      )
+      return
+    }
     setBusy(`Creating passkey for ${normalized}…`)
     try {
       const account = await registerPasskey(normalized)
@@ -122,11 +131,37 @@ export function ConnectScreen({
                   disabled={!!busy}
                 >
                   <span className="existing-label">{c.email ?? c.label}</span>
-                  <span className="existing-meta">{c.id.slice(0, 12)}…</span>
+                  <span className="existing-meta">
+                    {shortAddress(deriveAddress(c.publicKey))} · {fmtDate(c.createdAt)}
+                  </span>
                 </button>
               ))}
             </div>
           )}
+
+          <div className="existing">
+            <h3>Can't find an account?</h3>
+            <p className="muted small cross-device-hint">
+              Accounts are bound to the passkey that created them, not to the
+              email. If an account isn't in the list above:
+            </p>
+            <ul className="cross-device-list">
+              <li>
+                It lives in the <strong>browser/device where you created it</strong> —
+                open the same URL there and sign in with that passkey.
+              </li>
+              <li>
+                If the passkey synced (iCloud Keychain / Google), use{' '}
+                <strong>"Sign in with a passkey on this device"</strong> below —
+                it recovers the account from the passkey itself.
+              </li>
+              <li>
+                If you never had on-chain activity (no funds sent/received),
+                the account only exists as long as that passkey does — keep it
+                synced so it survives browser resets.
+              </li>
+            </ul>
+          </div>
 
           <div className="existing">
             <h3>Sign in with a passkey</h3>
@@ -182,4 +217,10 @@ function prettyError(e: any): string {
   if (/InvalidStateError|already exists/i.test(msg))
     return 'A passkey for this email already exists on this device — use "Sign back in".'
   return msg
+}
+
+function fmtDate(ts: number): string {
+  const d = new Date(ts)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
