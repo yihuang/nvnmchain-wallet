@@ -389,6 +389,28 @@ code,
   padding-bottom: 12px;
 }
 
+.fee-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.fee-amt {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.fee-warn {
+  color: var(--danger);
+}
+
+.fee-detail {
+  opacity: 0.7;
+}
+
 .send-btn {
   margin-top: 16px;
   width: 100%;

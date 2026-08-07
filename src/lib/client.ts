@@ -1,6 +1,6 @@
 import { http } from 'viem'
 import { createClient, Account, Addresses } from 'viem/tempo'
-import { nvnmchain, PATHUSD } from '../chain'
+import { nvnmchain, PATHUSD, RPC_URL } from '../chain'
 import type { StoredCredential } from './keystore'
 
 /**
@@ -48,27 +48,119 @@ export async function getPathUsdBalance(address: string): Promise<bigint> {
 }
 
 /**
+ * Estimates the gas and pathUSD fee for a transfer.
+ *
+ * Gas is measured with `tempo_simulateV1`, which returns `gasUsed` even when
+ * the transfer reverts (e.g. the sender has no pathUSD balance yet) — so this
+ * works before the account is funded. The fee reserve is deterministic:
+ * the node pre-charges `gasLimit × maxFeePerGas`, refunding unused gas.
+ */
+export type FeeEstimate = {
+  /** Gas limit to set on the tx (simulated gas + buffer). */
+  gasLimit: bigint
+  /** Fee cap we commit to on-chain. */
+  maxFeePerGas: bigint
+  maxPriorityFeePerGas: bigint
+  /** Reserve needed on top of the send amount, in pathUSD base units. */
+  fee: bigint
+}
+
+const FALLBACK_GAS = 300_000n
+const GAS_BUFFER = 30_000n
+const GAS_PRICE_MULTIPLIER = 2n
+
+export async function estimateTransferFee(
+  from: string,
+  to: string,
+): Promise<FeeEstimate> {
+  let gasPrice: bigint
+  try {
+    gasPrice = await publicClient.getGasPrice()
+  } catch {
+    gasPrice = 600_000_000n
+  }
+  const maxFeePerGas = gasPrice * GAS_PRICE_MULTIPLIER
+  const gasUsed = await simulateTransferGas(from, to)
+  const gasLimit = gasUsed + GAS_BUFFER
+  // pathUSD has 6 decimals; gas price is quoted in wei (1e18) → /1e12
+  const fee = (gasLimit * maxFeePerGas) / 10n ** 12n
+  return { gasLimit, maxFeePerGas, maxPriorityFeePerGas: 0n, fee }
+}
+
+async function simulateTransferGas(from: string, to: string): Promise<bigint> {
+  try {
+    const res = await fetch(RPC_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tempo_simulateV1',
+        params: [
+          {
+            blockStateCalls: [
+              {
+                blockOverrides: {},
+                calls: [
+                  {
+                    from,
+                    to: PATHUSD,
+                    data: encodeTransfer(to, 1n),
+                    value: '0x0',
+                  },
+                ],
+              },
+            ],
+          },
+          'latest',
+        ],
+      }),
+    })
+    const json = await res.json()
+    const gasUsed = json?.result?.blocks?.[0]?.calls?.[0]?.gasUsed
+    const g = gasUsed ? BigInt(gasUsed) : 0n
+    return g > 0n ? g : FALLBACK_GAS
+  } catch {
+    return FALLBACK_GAS
+  }
+}
+
+/**
  * Sends a pathUSD transfer in a Tempo Transaction signed by the passkey.
  * Fees are paid in pathUSD (the chain's fee token).
  *
- * @returns the transaction hash
+ * @returns hash plus final on-chain status: 'ok' | 'reverted' | 'timeout'
  */
 export async function sendPathUsd(
   credential: StoredCredential,
   to: string,
   amount: bigint,
-): Promise<{ hash: string }> {
+  fee: FeeEstimate,
+  onSubmitted?: (hash: string) => void,
+): Promise<{ hash: string; status: 'ok' | 'reverted' | 'timeout' }> {
   const client = walletClientFor(credential)
   const hash = await client.sendTransaction({
     to: PATHUSD,
     data: encodeTransfer(to, amount),
     value: 0n,
     feeToken: PATHUSD,
-    // Tempo state-creation costs are high (250k gas for a new storage
-    // slot); transfers to fresh addresses need a healthy gas budget.
-    gas: 600_000n,
+    gas: fee.gasLimit,
+    maxFeePerGas: fee.maxFeePerGas,
+    maxPriorityFeePerGas: fee.maxPriorityFeePerGas,
   })
-  return { hash }
+  onSubmitted?.(hash)
+  try {
+    const receipt = await publicClient.waitForTransactionReceipt({
+      hash,
+      timeout: 60_000,
+    })
+    return {
+      hash,
+      status: receipt.status === 'success' ? 'ok' : 'reverted',
+    }
+  } catch {
+    return { hash, status: 'timeout' }
+  }
 }
 
 export function encodeTransfer(to: string, amount: bigint): `0x${string}` {

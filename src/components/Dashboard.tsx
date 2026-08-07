@@ -121,6 +121,7 @@ export function Dashboard({
 
         <SendPanel
           credential={credential}
+          address={address}
           balance={balance}
           onSent={() => {
             setRefreshKey((k) => k + 1)

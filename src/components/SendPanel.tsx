@@ -1,28 +1,76 @@
-import { useState } from 'react'
-import { isAddress } from 'viem'
-import { parseUnits } from 'viem'
+import { useEffect, useRef, useState } from 'react'
+import { isAddress, parseUnits } from 'viem'
 import type { StoredCredential } from '../lib/keystore'
-import { sendPathUsd } from '../lib/client'
-import { formatUnits, explorerTxUrl, PATHUSD } from '../chain'
+import { estimateTransferFee, sendPathUsd, type FeeEstimate } from '../lib/client'
+import { formatUnits, explorerTxUrl, shortAddress } from '../chain'
+
+type Phase =
+  | 'idle'
+  | 'estimating'
+  | 'signing'
+  | 'broadcasting'
+  | 'submitted'
+  | 'ok'
+  | 'reverted'
+  | 'timeout'
 
 export function SendPanel({
   credential,
+  address,
   balance,
   onSent,
 }: {
   credential: StoredCredential
+  address: string
   balance: bigint | null
   onSent: () => void
 }) {
   const [to, setTo] = useState('')
   const [amount, setAmount] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [fee, setFee] = useState<FeeEstimate | null>(null)
+  const [phase, setPhase] = useState<Phase>('idle')
   const [error, setError] = useState<string | null>(null)
-  const [sentHash, setSentHash] = useState<string | null>(null)
+  const [txHash, setTxHash] = useState<string | null>(null)
+  const toTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // (Re)estimate the fee whenever the recipient changes (debounced).
+  useEffect(() => {
+    setFee(null)
+    if (!isAddress(to)) return
+    setPhase('estimating')
+    if (toTimer.current) clearTimeout(toTimer.current)
+    toTimer.current = setTimeout(async () => {
+      try {
+        const est = await estimateTransferFee(address, to)
+        setFee(est)
+      } catch {
+        setFee(null)
+      } finally {
+        setPhase((p) => (p === 'estimating' ? 'idle' : p))
+      }
+    }, 350)
+    return () => {
+      if (toTimer.current) clearTimeout(toTimer.current)
+    }
+  }, [to, address])
+
+  const busy = phase === 'signing' || phase === 'broadcasting' || phase === 'submitted'
+
+  function handleMax() {
+    if (balance === null || fee === null) return
+    const maxSendable = balance - fee.fee
+    if (maxSendable <= 0n) {
+      setAmount('')
+      setError('Balance is too low to cover the estimated fee — top up first.')
+      return
+    }
+    setAmount(formatUnits(maxSendable))
+    setError(null)
+  }
 
   async function handleSend() {
     setError(null)
-    setSentHash(null)
+    setTxHash(null)
 
     if (!isAddress(to)) {
       setError('Enter a valid recipient address (0x…).')
@@ -39,28 +87,55 @@ export function SendPanel({
       setError('Amount must be greater than zero.')
       return
     }
-    if (balance !== null && value > balance) {
-      setError(`Insufficient balance (have ${formatUnits(balance)} pathUSD).`)
+    if (balance === null) {
+      setError('Balance is still loading — try again in a second.')
+      return
+    }
+    if (fee === null) {
+      setError('Fee estimate unavailable — check the recipient and try again.')
+      return
+    }
+    const total = value + fee.fee
+    if (total > balance) {
+      setError(
+        `Insufficient pathUSD. Amount + estimated fee (${formatUnits(fee.fee)} pathUSD) is ${formatUnits(total)}, but you have ${formatUnits(balance)}.`,
+      )
       return
     }
 
-    setBusy(true)
+    setPhase('signing')
     try {
-      const { hash } = await sendPathUsd(credential, to, value)
-      setSentHash(hash)
-      setTo('')
-      setAmount('')
-      onSent()
+      const result = await sendPathUsd(
+        credential,
+        to,
+        value,
+        fee,
+        () => setPhase('submitted'),
+      )
+      setTxHash(result.hash)
+      setPhase(result.status === 'ok' ? 'ok' : result.status)
+      if (result.status === 'ok') {
+        setTo('')
+        setAmount('')
+        setFee(null)
+        onSent()
+      }
     } catch (e: any) {
       const msg = e?.shortMessage ?? e?.message ?? String(e)
       const details = e?.details ?? e?.cause?.details ?? ''
-      if (/insufficient funds/i.test(details))
+      if (/insufficient funds/i.test(details)) {
         setError(
-          'Insufficient pathUSD for fees. Top up this address, then try again.',
+          'Insufficient pathUSD for the amount + fee. Top up this address, then try again.',
         )
-      else setError(`${msg}${details ? ` — ${details}` : ''}`)
+      } else if (/gas limit/i.test(details)) {
+        setError(`Gas limit exceeded — please try again. (${details})`)
+      } else if (/user rejected|rejected/i.test(msg)) {
+        setError('Passkey prompt was cancelled — nothing was sent.')
+      } else {
+        setError(`${msg}${details ? ` — ${details}` : ''}`)
+      }
     } finally {
-      setBusy(false)
+      setPhase((p) => (p === 'signing' || p === 'broadcasting' ? 'idle' : p))
     }
   }
 
@@ -84,6 +159,7 @@ export function SendPanel({
         onChange={(e) => setTo(e.target.value)}
         placeholder="0x…"
         spellCheck={false}
+        disabled={busy}
       />
 
       <div className="amount-row">
@@ -98,39 +174,80 @@ export function SendPanel({
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
             inputMode="decimal"
+            disabled={busy}
           />
         </div>
         <div className="amount-meta">
           <span className="muted small">Available: {max}</span>
           <button
             className="btn ghost tiny"
-            onClick={() =>
-              balance !== null && setAmount(formatUnits(balance))
-            }
-            disabled={balance === null}
+            onClick={handleMax}
+            disabled={balance === null || fee === null || busy}
+            title={fee ? 'Fills in the max amount, keeping pathUSD aside for the fee' : 'Enter a recipient first'}
           >
             Max
           </button>
         </div>
       </div>
 
-      <button
-        className="btn primary send-btn"
-        onClick={handleSend}
-        disabled={busy}
-      >
-        {busy ? 'Awaiting passkey approval…' : 'Send'}
+      <div className="fee-line">
+        {phase === 'estimating' ? (
+          <span className="muted small">Estimating fee…</span>
+        ) : fee ? (
+          <>
+            <span className="muted small">
+              Estimated fee: <strong className="fee-amt">{formatUnits(fee.fee)} pathUSD</strong>
+              {balance !== null && balance <= fee.fee && (
+                <span className="fee-warn"> — balance can't cover fees yet</span>
+              )}
+            </span>
+            <span className="muted small fee-detail">
+              gas {fee.gasLimit.toString()} · cap {formatUnits(fee.maxFeePerGas * fee.gasLimit / 10n ** 12n, 6)} pathUSD
+            </span>
+          </>
+        ) : (
+          <span className="muted small">
+            {isAddress(to) ? 'Fee estimate unavailable' : 'Enter a recipient to estimate the fee'}
+          </span>
+        )}
+      </div>
+
+      <button className="btn primary send-btn" onClick={handleSend} disabled={busy}>
+        {phase === 'signing'
+          ? 'Awaiting passkey approval…'
+          : phase === 'broadcasting'
+            ? 'Broadcasting…'
+            : phase === 'submitted'
+              ? 'Awaiting confirmation…'
+              : 'Send'}
       </button>
 
-      {error && <div className="error">{error}</div>}
-      {sentHash && (
+      {phase === 'ok' && txHash && (
         <div className="success">
-          Sent!{' '}
-          <a href={explorerTxUrl(sentHash)} target="_blank" rel="noreferrer">
-            View on explorer ↗
+          ✓ Transaction confirmed!{' '}
+          <a href={explorerTxUrl(txHash)} target="_blank" rel="noreferrer">
+            {shortAddress(txHash)} ↗
           </a>
         </div>
       )}
+      {phase === 'reverted' && txHash && (
+        <div className="error">
+          Transaction was mined but <strong>reverted on-chain</strong> — nothing
+          was sent.{' '}
+          <a href={explorerTxUrl(txHash)} target="_blank" rel="noreferrer">
+            View {shortAddress(txHash)} ↗
+          </a>
+        </div>
+      )}
+      {phase === 'timeout' && txHash && (
+        <div className="success">
+          Submitted! Confirmation is taking a while —{' '}
+          <a href={explorerTxUrl(txHash)} target="_blank" rel="noreferrer">
+            check the explorer for {shortAddress(txHash)} ↗
+          </a>
+        </div>
+      )}
+      {error && <div className="error">{error}</div>}
     </section>
   )
 }
