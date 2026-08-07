@@ -129,7 +129,7 @@ export function ConnectScreen({
           )}
 
           <div className="existing">
-            <h3>On another device?</h3>
+            <h3>Sign in with a passkey</h3>
             <button
               className="btn ghost existing-row"
               onClick={handleDiscoverableLogin}
@@ -139,14 +139,28 @@ export function ConnectScreen({
               <span className="existing-meta">↗</span>
             </button>
             <p className="muted small cross-device-hint">
-              Works for passkeys synced to this device (e.g. iCloud Keychain).
-              Your address is recovered from the passkey itself — no local data
-              needed, nothing stored elsewhere. For a brand-new address you'll
-              approve twice (that's how the wallet securely identifies the
-              passkey). Passkeys only sync between devices signed into the same
-              account (Apple ID / Google), and you must use the same URL on both
-              devices.
+              If a <strong>QR code</strong> appears, this browser doesn't have a
+              passkey for this site yet — that's the cross-device option: scan it
+              with the phone that has the passkey. To get the fingerprint prompt
+              instead:
             </p>
+            <ul className="cross-device-list">
+              <li>
+                Use the <strong>same browser</strong> you registered with — on
+                macOS, Chrome only reads iCloud Keychain passkeys with the
+                “iCloud Passwords” extension enabled; Safari reads them
+                natively.
+              </li>
+              <li>
+                Use the <strong>same URL</strong> (e.g. always
+                yihuang.github.io/nvnmchain-wallet, not localhost) — passkeys
+                are bound to the site's address.
+              </li>
+              <li>
+                Make sure <strong>iCloud Keychain sync</strong> is on for the
+                same Apple ID on all your devices.
+              </li>
+            </ul>
           </div>
 
           {error && <div className="error">{error}</div>}

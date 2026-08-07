@@ -116,6 +116,19 @@ export async function loginPasskey(
 export async function loginWithDiscoverablePasskey(): Promise<WalletAccount> {
   const rpId = window.location.hostname
 
+  // Prefer locally-known credentials for this RP first: an allowCredentials
+  // request prompts the platform authenticator directly (Touch ID) instead of
+  // offering the cross-device QR flow. Only fall through when the credential
+  // is no longer available in this browser (e.g. a new browser profile).
+  const local = keystore.listCredentials().filter((c) => c.rpId === rpId)
+  for (const c of local) {
+    try {
+      return await loginPasskey(c.id)
+    } catch {
+      // credential not in this browser's authenticator → keep going
+    }
+  }
+
   const first = await getAssertionCandidates(rpId)
   let publicKeyHex: OxHex.Hex | null = await disambiguateByOnChainState(
     first.candidates,
