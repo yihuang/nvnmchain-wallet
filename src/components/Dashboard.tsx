@@ -1,0 +1,135 @@
+import { useCallback, useEffect, useState } from 'react'
+import type { StoredCredential } from '../lib/keystore'
+import type { WalletAccount } from '../lib/passkey'
+import { deriveAddress } from '../lib/passkey'
+import { getPathUsdBalance, getHistory, tryFaucet, type HistoryItem } from '../lib/client'
+import { formatUnits, shortAddress, explorerAddressUrl, explorerTxUrl, PATHUSD } from '../chain'
+import { SendPanel } from './SendPanel'
+import { ActivityList } from './ActivityList'
+
+export function Dashboard({
+  credential,
+  onConnected,
+  onDisconnect,
+}: {
+  credential: StoredCredential
+  onConnected: (a: WalletAccount) => void
+  onDisconnect: () => void
+}) {
+  const [address] = useState(() => deriveAddress(credential.publicKey))
+  const [balance, setBalance] = useState<bigint | null>(null)
+  const [history, setHistory] = useState<HistoryItem[]>([])
+  const [faucetMsg, setFaucetMsg] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  const refresh = useCallback(async () => {
+    try {
+      const [bal, hist] = await Promise.all([
+        getPathUsdBalance(address),
+        getHistory(address),
+      ])
+      setBalance(bal)
+      setHistory(hist)
+    } catch {
+      // transient RPC hiccup — keep stale data
+    }
+  }, [address])
+
+  useEffect(() => {
+    refresh()
+    const t = setInterval(refresh, 15_000)
+    return () => clearInterval(t)
+  }, [refresh, refreshKey])
+
+  async function handleFaucet() {
+    setFaucetMsg('Requesting funds…')
+    const res = await tryFaucet(address)
+    setFaucetMsg(
+      res
+        ? 'Funds requested — check back in a moment.'
+        : 'The canary faucet is not enabled. Ask the chain operator to fund this address, or send pathUSD from a funded account.',
+    )
+  }
+
+  async function copyAddress() {
+    try {
+      await navigator.clipboard.writeText(address)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
+
+  return (
+    <div className="shell">
+      <header className="topbar">
+        <div className="brand">
+          <span className="brand-mark" />
+          <span className="brand-name">NVNM Passkey Wallet</span>
+        </div>
+        <div className="topbar-right">
+          <span className="network-pill">NVNM Canary</span>
+          <button className="btn ghost small" onClick={onDisconnect}>
+            Disconnect
+          </button>
+        </div>
+      </header>
+
+      <main className="dashboard">
+        <section className="card account-card">
+          <div className="account-head">
+            <div>
+              <span className="eyebrow">Passkey account</span>
+              <h2>{credential.label}</h2>
+            </div>
+            <div className="acct-actions">
+              <button className="btn ghost small" onClick={copyAddress}>
+                {copied ? 'Copied ✓' : 'Copy'}
+              </button>
+              <a
+                className="btn ghost small"
+                href={explorerAddressUrl(address)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Explorer ↗
+              </a>
+            </div>
+          </div>
+          <code className="address">{address}</code>
+          <div className="balance-row">
+            <div className="balance">
+              <span className="eyebrow">Balance · pathUSD</span>
+              <div className="balance-amount">
+                {balance === null ? '—' : formatUnits(balance)}
+                <span className="balance-symbol"> pathUSD</span>
+              </div>
+            </div>
+            <div className="balance-note">
+              No native gas token — fees are paid in pathUSD.
+            </div>
+          </div>
+          <div className="faucet-row">
+            <button className="btn ghost small" onClick={handleFaucet}>
+              Request funds
+            </button>
+            {faucetMsg && <span className="muted small">{faucetMsg}</span>}
+          </div>
+        </section>
+
+        <SendPanel
+          credential={credential}
+          balance={balance}
+          onSent={() => {
+            setRefreshKey((k) => k + 1)
+            refresh()
+          }}
+        />
+
+        <ActivityList items={history} address={address} />
+      </main>
+    </div>
+  )
+}
