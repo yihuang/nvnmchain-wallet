@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { registerPasskey, loginPasskey, normalizeEmail, isValidEmail } from '../lib/passkey'
+import { registerPasskey, loginPasskey, loginWithDiscoverablePasskey, normalizeEmail, isValidEmail } from '../lib/passkey'
 import type { WalletAccount } from '../lib/passkey'
 import * as keystore from '../lib/keystore'
 import { CHAIN_ID } from '../chain'
@@ -37,6 +37,19 @@ export function ConnectScreen({
     setError(null)
     try {
       const account = await loginPasskey(id)
+      onCreated(account)
+    } catch (e: any) {
+      setError(prettyError(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function handleDiscoverableLogin() {
+    setBusy('Looking for passkeys on this device…')
+    setError(null)
+    try {
+      const account = await loginWithDiscoverablePasskey()
       onCreated(account)
     } catch (e: any) {
       setError(prettyError(e))
@@ -114,6 +127,27 @@ export function ConnectScreen({
               ))}
             </div>
           )}
+
+          <div className="existing">
+            <h3>On another device?</h3>
+            <button
+              className="btn ghost existing-row"
+              onClick={handleDiscoverableLogin}
+              disabled={!!busy}
+            >
+              <span className="existing-label">Sign in with a passkey on this device</span>
+              <span className="existing-meta">↗</span>
+            </button>
+            <p className="muted small cross-device-hint">
+              Works for passkeys synced to this device (e.g. iCloud Keychain).
+              Your address is recovered from the passkey itself — no local data
+              needed, nothing stored elsewhere. For a brand-new address you'll
+              approve twice (that's how the wallet securely identifies the
+              passkey). Passkeys only sync between devices signed into the same
+              account (Apple ID / Google), and you must use the same URL on both
+              devices.
+            </p>
+          </div>
 
           {error && <div className="error">{error}</div>}
         </div>

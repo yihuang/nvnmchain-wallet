@@ -34,6 +34,12 @@ fees in `pathUSD` via the Fee Manager.
 - **Sign back in** — pick your email from the list and authenticate with the
   existing passkey; the public key is restored from the local keystore (it
   isn't extractable from the authenticator).
+- **Cross-device login** — *"Sign in with a passkey on this device"* works
+  with **zero local data**: the P-256 public key is recovered from the
+  WebAuthn assertion itself (ECDSA public-key recovery). Because a signature
+  yields two candidate keys, the wallet disambiguates via on-chain state
+  (balance/nonce/code) or by intersecting candidates from a second
+  confirmation — your address never depends on local storage.
 - **Fee-aware Max** — gas is measured via `tempo_simulateV1` (works before
   the account is funded), the pathUSD fee reserve is computed deterministically
   (`gasLimit × maxFeePerGas / 1e12`), and Max leaves room for the fee.
@@ -127,3 +133,23 @@ the transaction, rejecting only for missing funds.
 - `eth_getBalance` always returns the Tempo placeholder
   (`4.242424242424242e75`); always read balances from TIP-20
   `balanceOf(pathUSD, …)` instead.
+
+## Cross-device & iCloud Keychain
+
+Passkeys live in the platform authenticator and **sync automatically** between
+devices signed into the same account (iCloud Keychain on Apple devices,
+Google Password Manager on Android). To log in on another device:
+
+1. Use the **same URL** on both devices (passkeys are bound to the origin —
+   a passkey created on `localhost` won't appear on the deployed site).
+2. On the new device, tap **"Sign in with a passkey on this device"**.
+3. Pick your passkey. If the account has no on-chain activity yet, approve
+   **twice** — the wallet uses the two assertions to cryptographically
+   identify your passkey (see below), then remembers it on that device.
+
+> Why twice? A WebAuthn assertion does not expose the public key, and ECDSA
+> recovery from a single signature yields **two** candidate keys that both
+> validate. The wallet intersects candidates from two assertions — the true
+> key appears in both, the decoy differs each time — so the recovered address
+> is exact. For accounts with any on-chain activity, one confirmation suffices
+> (the wallet checks which candidate address actually has state).

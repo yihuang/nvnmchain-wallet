@@ -179,8 +179,35 @@ async function main() {
   }
   console.log('✔ re-login restored the same address + email')
 
+  // 6. Cross-device: wipe local data → recover the account from the passkey alone
+  console.log('→ simulating a new device (clearing local data)…')
+  await page.evaluate(() => localStorage.clear())
+  await page.click('button:has-text("Disconnect")')
+  await page.waitForSelector('.hero h1', { timeout: 10_000 })
+  const hasSignInList = await page.locator('text=Sign back in').count()
+  if (hasSignInList > 0) {
+    console.log('✘ expected an empty sign-in list after clearing local data')
+    await browser.close()
+    process.exit(1)
+  }
+  await page.click('button:has-text("Sign in with a passkey on this device")')
+  await page.waitForSelector('.balance-amount', { timeout: 30_000 })
+  const addr3 = (await page.textContent('code.address'))?.trim()
+  const name3 = (await page.textContent('.account-head h2'))?.trim()
+  if (addr3 !== address) {
+    console.log('✘ cross-device recovery mismatch:', addr3, 'vs', address)
+    await browser.close()
+    process.exit(1)
+  }
+  if (name3 !== 'test.user@example.com') {
+    console.log('✘ recovered account name mismatch:', name3)
+    await browser.close()
+    process.exit(1)
+  }
+  console.log('✔ passkey-only recovery restored the same address + email')
+
   console.log('\n✔ E2E PASS — registration, derivation, fee estimate, Max,')
-  console.log('  send feedback and re-login all work in the browser.')
+  console.log('  send feedback, re-login and cross-device recovery all work.')
   await browser.close()
   process.exit(0)
 }

@@ -171,6 +171,11 @@ code,
   border-radius: 6px;
 }
 
+.cross-device-hint {
+  line-height: 1.5;
+  margin: 6px 0 0;
+}
+
 .muted {
   color: var(--muted);
 }
