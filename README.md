@@ -59,6 +59,31 @@ npm run e2e       # Playwright + virtual authenticator end-to-end test
 npm run build     # production build
 ```
 
+## Deploy
+
+**Live at <https://yihuang.github.io/nvnmchain-wallet/>** — deployed with
+GitHub Actions from the `main` branch (`.github/workflows/deploy.yml`):
+
+```bash
+git push origin main   # triggers build + deploy to GitHub Pages
+```
+
+To build with the Pages base path locally:
+
+```bash
+GH_PAGES=1 npm run build
+```
+
+Verify the live deployment with a virtual authenticator:
+
+```bash
+node scripts/gh-pages-check.mjs
+```
+
+> Passkeys are bound to the origin — on `yihuang.github.io` the passkey's
+> RP ID is `yihuang.github.io`, so credentials created locally on
+> `localhost` won't authenticate there (and vice-versa).
+
 ## How it works
 
 1. **Register** — `viem/tempo`'s `WebAuthnP256.createCredential` creates a
